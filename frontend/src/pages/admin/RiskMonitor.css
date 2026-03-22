@@ -1,0 +1,130 @@
+.risk-monitor-simple {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1rem;
+}
+
+.section-header-banner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  border-left: 4px solid var(--primary);
+}
+
+.banner-icon {
+  color: var(--primary);
+}
+
+.banner-text h2 {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.banner-text p {
+  color: #94A3B8;
+  font-size: 0.95rem;
+}
+
+.risk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.risk-card-item {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  border-left: 3px solid transparent;
+}
+
+.risk-card-item.critical { border-left-color: #EF4444; background: rgba(239, 68, 68, 0.05); }
+.risk-card-item.warning { border-left-color: #F59E0B; background: rgba(245, 158, 11, 0.05); }
+.risk-card-item.safe { border-left-color: #10B981; background: rgba(16, 185, 129, 0.05); }
+
+.risk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.area-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-weight: 700;
+}
+
+.risk-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-badge.critical { background: #EF4444; color: #fff; }
+.risk-badge.warning { background: #F59E0B; color: #fff; }
+.risk-badge.safe { background: #10B981; color: #fff; }
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.metric-row label {
+  font-size: 0.85rem;
+  color: #94A3B8;
+}
+
+.metric-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #F1F5F9;
+}
+
+.risk-score-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.score-label { font-size: 0.8rem; color: #94A3B8; }
+.score-num { font-size: 1.75rem; font-weight: 800; font-family: 'Syne', sans-serif; }
+
+.progress-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill { height: 100%; background: var(--primary); }
+.critical .progress-fill { background: #EF4444; }
+.warning .progress-fill { background: #F59E0B; }
+.safe .progress-fill { background: #10B981; }
+
+.risk-footer.alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #EF4444;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.empty-state-full {
+  grid-column: 1 / -1;
+  padding: 4rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  color: #475569;
+}
