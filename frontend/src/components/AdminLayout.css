@@ -238,7 +238,7 @@
 /* ------------------------------------------------------------------ */
 /* Unread count badge on bell                                           */
 /* ------------------------------------------------------------------ */
-.bell-badge {
+.bell-badge, .notification-badge {
   position: absolute;
   top: -6px;
   right: -6px;
@@ -255,6 +255,7 @@
   padding: 0 4px;
   border: 2px solid var(--bg-color, #0a1628);
   pointer-events: none;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
 }
 
 /* ------------------------------------------------------------------ */
@@ -394,9 +395,50 @@
 }
 
 /* Type-based left border colours */
-.notif-item.notif-critical  { border-left-color: #ef4444; }
-.notif-item.notif-warning   { border-left-color: #f97316; }
-.notif-item.notif-info      { border-left-color: #3b82f6; }
+.notif-item.notif-critical, .notification-item[data-type="HIGH_RISK"], .notification-item[data-type="SLA_BREACH"], .notification-item[data-type="AREA_ALERT"], .notification-item[data-type="AREA_RISK_ESCALATION"]  { border-left-color: #ef4444; }
+.notif-item.notif-warning, .notification-item[data-type="SLA_WARNING"], .notification-item[data-type="REPEAT_SUBMISSION"]   { border-left-color: #f97316; }
+.notif-item.notif-info, .notification-item[data-type="ADMIN_NOTICE"], .notification-item[data-type="STATUS_UPDATE"], .notification-item[data-type="RESOLVED"]      { border-left-color: #3b82f6; }
+
+.notification-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-left: 4px solid transparent;
+  margin-bottom: 8px;
+  border-radius: 0 12px 12px 0;
+}
+
+.notification-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateX(4px);
+}
+
+.notification-item p {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.notification-item small {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.notification-item.unread {
+  background: rgba(27, 175, 191, 0.05);
+}
+
+.notification-item.unread p {
+  font-weight: 600;
+}
 
 /* Icon circle */
 .notif-item-icon {

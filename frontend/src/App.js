@@ -12,7 +12,6 @@ import MyComplaintsPage from './pages/MyComplaintsPage';
 
 import AllComplaints from './pages/admin/AllComplaints';
 import SLAMonitor from './pages/admin/SLAMonitor';
-import Settings from './pages/admin/Settings';
 import { ToastProvider } from './context/ToastContext';
 import './App.css';
 
@@ -31,7 +30,6 @@ function App() {
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/complaints" element={<AllComplaints />} />
             <Route path="/admin/sla" element={<SLAMonitor />} />
-            <Route path="/admin/settings" element={<Settings />} />
           </Route>
 
           {/* User Protected Routes */}

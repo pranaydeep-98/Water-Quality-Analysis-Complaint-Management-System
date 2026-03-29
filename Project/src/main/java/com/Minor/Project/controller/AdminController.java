@@ -23,6 +23,7 @@ public class AdminController {
     private final ComplaintService complaintService;
     private final NotificationService notificationService;
     private final AreaRiskService areaRiskService;
+    private final com.Minor.Project.repository.SlaConfigRepository slaConfigRepository;
 
     @GetMapping("/area-risk")
     public ResponseEntity<List<AreaRiskDTO>> getAreaRisk() {
@@ -57,5 +58,23 @@ public class AdminController {
     @GetMapping("/notifications")
     public ResponseEntity<List<Notification>> getAllNotifications() {
         return ResponseEntity.ok(notificationService.getAllNotifications());
+    }
+
+    @GetMapping("/sla-config")
+    public ResponseEntity<com.Minor.Project.model.SlaConfig> getSlaConfig() {
+        return ResponseEntity.ok(slaConfigRepository.findTopByOrderByIdDesc()
+                .orElse(com.Minor.Project.model.SlaConfig.builder()
+                        .highSeverityHours(4)
+                        .mediumSeverityHours(24)
+                        .lowSeverityHours(72)
+                        .build()));
+    }
+
+    @PostMapping("/sla-config")
+    public ResponseEntity<com.Minor.Project.model.SlaConfig> updateSlaConfig(@RequestBody com.Minor.Project.model.SlaConfig config) {
+        // We always keep only the latest one or create a new one
+        slaConfigRepository.deleteAll();
+        config.setId(null);
+        return ResponseEntity.ok(slaConfigRepository.save(config));
     }
 }

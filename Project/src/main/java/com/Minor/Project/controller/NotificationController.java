@@ -28,29 +28,27 @@ public class NotificationController {
     // -----------------------------------------------------------------------
 
     private final List<NotificationType> adminTypes = List.of(
-        NotificationType.SYSTEM_ALERT, NotificationType.ADMIN_NOTICE, NotificationType.SLA_ALERT,
-        NotificationType.HIGH_RISK, NotificationType.SLA_WARNING, NotificationType.SLA_BREACH,
-        NotificationType.REPEAT_SUBMISSION, NotificationType.AREA_ALERT
-    );
+            NotificationType.SYSTEM_ALERT, NotificationType.ADMIN_NOTICE, NotificationType.SLA_ALERT,
+            NotificationType.HIGH_RISK, NotificationType.SLA_WARNING, NotificationType.SLA_BREACH,
+            NotificationType.REPEAT_SUBMISSION, NotificationType.AREA_ALERT, NotificationType.ADMIN,
+            NotificationType.AREA_RISK_ESCALATION, NotificationType.SPIKE_DETECTION, NotificationType.STAGNATION_ALERT);
 
     /** GET /api/notifications/admin/all — all admin notifications, newest first */
     @GetMapping("/admin/all")
     public ResponseEntity<List<Notification>> getAllNotifications() {
         return ResponseEntity.ok(
-            notificationService.getAllNotifications().stream()
-                .filter(n -> adminTypes.contains(n.getType()))
-                .toList()
-        );
+                notificationService.getAllNotifications().stream()
+                        .filter(n -> adminTypes.contains(n.getType()))
+                        .toList());
     }
 
     /** GET /api/notifications/admin/unread — admin unread notifications */
     @GetMapping("/admin/unread")
     public ResponseEntity<List<Notification>> getUnreadNotifications() {
         return ResponseEntity.ok(
-            notificationService.getUnreadNotifications().stream()
-                .filter(n -> adminTypes.contains(n.getType()))
-                .toList()
-        );
+                notificationService.getUnreadNotifications().stream()
+                        .filter(n -> adminTypes.contains(n.getType()))
+                        .toList());
     }
 
     /** PUT /api/notifications/{id}/read — mark single notification as read */
@@ -75,21 +73,10 @@ public class NotificationController {
         return ResponseEntity.ok(Map.of("success", true, "message", "All notifications cleared"));
     }
 
-    /** GET /api/notifications/admin — legacy endpoint filtered to system/admin types */
+    /** GET /api/notifications/admin — Admin notification system endpoint */
     @GetMapping("/admin")
     public ResponseEntity<List<Notification>> getAdminNotifications() {
-        return ResponseEntity.ok(
-            notificationService.getAllNotifications().stream()
-                .filter(n -> n.getType() == NotificationType.SYSTEM_ALERT
-                          || n.getType() == NotificationType.ADMIN_NOTICE
-                          || n.getType() == NotificationType.SLA_ALERT
-                          || n.getType() == NotificationType.HIGH_RISK
-                          || n.getType() == NotificationType.SLA_WARNING
-                          || n.getType() == NotificationType.SLA_BREACH
-                          || n.getType() == NotificationType.REPEAT_SUBMISSION
-                          || n.getType() == NotificationType.AREA_ALERT)
-                .toList()
-        );
+        return ResponseEntity.ok(notificationService.getAllNotifications());
     }
 
     // -----------------------------------------------------------------------

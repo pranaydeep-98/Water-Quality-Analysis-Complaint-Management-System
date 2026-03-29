@@ -5,7 +5,6 @@ import com.Minor.Project.model.*;
 import com.Minor.Project.repository.ComplaintRepository;
 import com.Minor.Project.repository.UserRepository;
 import com.Minor.Project.repository.ComplaintActivityRepository;
-import com.Minor.Project.repository.SlaConfigRepository;
 import com.Minor.Project.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -29,7 +28,6 @@ public class ComplaintService {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final ComplaintActivityRepository activityRepository;
-    private final SlaConfigRepository slaConfigRepository;
     private final JwtUtil jwtUtil;
 
     @Value("${duplicate.timeWindowHours:24}")
@@ -81,17 +79,10 @@ public class ComplaintService {
         int riskScore = Math.min((severityWeight * 20) + (duplicateCount * 10), 100);
 
         // Get SLA Deadline
-        SlaConfig config = slaConfigRepository.findTopByOrderByIdDesc()
-                .orElse(SlaConfig.builder()
-                        .highSeverityHours(4)
-                        .mediumSeverityHours(24)
-                        .lowSeverityHours(72)
-                        .build());
-
         int slaHoursVal = 72;
-        if ("HIGH".equals(severity)) slaHoursVal = config.getHighSeverityHours();
-        else if ("MEDIUM".equals(severity)) slaHoursVal = config.getMediumSeverityHours();
-        else slaHoursVal = config.getLowSeverityHours();
+        if ("HIGH".equals(severity)) slaHoursVal = 24;
+        else if ("MEDIUM".equals(severity)) slaHoursVal = 48;
+        else slaHoursVal = 72;
 
         LocalDateTime deadline = LocalDateTime.now().plusHours(slaHoursVal);
 
@@ -145,46 +136,34 @@ public class ComplaintService {
 
         // 8. Notification Logic
         try {
-            // Admin notification for new complaint
-            notificationService.createNotification(
-                    "New report in " + saved.getArea() + " (ID: #" + saved.getId() + ")", 
-                    NotificationType.ADMIN_NOTICE, 
-                    null, // No specific user for admin notice
-                    saved.getArea());
-
-            // System alert for high risk
-            if (riskScore > 75) {
+            // 🚨 1. HIGH RISK ALERT (CRITICAL CONDITION)
+            if (riskScore >= 75 && !"Resolved".equals(saved.getStatus())) {
                 notificationService.createNotification(
-                        "High systemic risk detected in " + saved.getArea() + " for " + saved.getIssueType() + " (Risk: " + riskScore + ")",
-                        NotificationType.HIGH_RISK, 
-                        saved.getId(), 
-                        null, 
-                        saved.getArea());
-            }
-
-            // Repeat Submission
-            if (repeatUser) {
-                notificationService.createNotification(
-                    "User submitted repeated complaint for " + saved.getIssueType() + " in " + saved.getArea() + " (ID: #" + saved.getId() + ")",
-                    NotificationType.REPEAT_SUBMISSION,
+                    NotificationType.HIGH_RISK,
                     saved.getId(),
-                    null,
-                    saved.getArea()
+                    String.format("Critical water issue detected in %s with risk score %d", saved.getArea(), riskScore)
                 );
             }
 
-            // Area Alert (Surge Detection)
+            // 📍 2. AREA OUTBREAK ALERT (SYSTEMIC ISSUE)
+            // duplicateCount already reflects unique reporters within 24h window
             if (duplicateCount >= 3) {
                 notificationService.createNotification(
-                    "Multiple complaint surge (" + duplicateCount + " reports) for " + saved.getIssueType() + " in " + saved.getArea(),
                     NotificationType.AREA_ALERT,
                     saved.getId(),
-                    null,
-                    saved.getArea()
+                    String.format("Multiple users (%d) reported %s in %s", duplicateCount, saved.getIssueType(), saved.getArea())
+                );
+            }
+
+            // 🔁 3. REPEAT USER SPAM DETECTION
+            if (repeatUser) {
+                notificationService.createNotification(
+                    NotificationType.REPEAT_SUBMISSION,
+                    saved.getId(),
+                    String.format("Repeated complaint detected from same user in %s", saved.getArea())
                 );
             }
         } catch (Exception e) {
-            // Log failure but don't crash
             System.err.println("Error creating notification: " + e.getMessage());
         }
 
@@ -284,6 +263,57 @@ public class ComplaintService {
         }
     }
 
+    @Scheduled(fixedRate = 3600000) // Every hour
+    @Transactional
+    public void generateSystemSummaries() {
+        LocalDateTime now = LocalDateTime.now();
+        List<Complaint> active = complaintRepository.findAll().stream()
+                .filter(c -> !"Resolved".equals(c.getStatus()))
+                .collect(Collectors.toList());
+
+        // 1. Extreme Risk Summary
+        long extremeRiskCount = active.stream()
+                .filter(c -> (c.getRiskScore() != null && c.getRiskScore() >= 90))
+                .count();
+        if (extremeRiskCount >= 3) {
+            String msg = extremeRiskCount + " extreme risk complaints require immediate administrative attention.";
+            notificationService.createNotification(msg, NotificationType.SYSTEM_ALERT, null, "Critical System Summary");
+        }
+
+        // 2. SLA Breach Summary
+        long breachedCount = active.stream()
+                .filter(c -> c.getDeadline() != null && now.isAfter(c.getDeadline()))
+                .count();
+        if (breachedCount > 0) {
+            String msg = breachedCount + " operations have breached SLA deadlines and require urgent resolution.";
+            notificationService.createNotification(msg, NotificationType.SYSTEM_ALERT, null, "SLA Failure Summary");
+        }
+
+        // 📈 7. SPIKE DETECTION (today vs last 3 days avg)
+        LocalDateTime todayStart = now.toLocalDate().atStartOfDay();
+        LocalDateTime last3DaysStart = todayStart.minusDays(3);
+        
+        long todayCount = complaintRepository.findByCreatedDateAfter(todayStart).size();
+        long last3DaysCount = complaintRepository.findByCreatedDateAfter(last3DaysStart).size() - todayCount;
+        double avgLast3Days = last3DaysCount / 3.0;
+
+        if (todayCount >= 2 * avgLast3Days && todayCount >= 5) {
+            String msg = String.format("Alert: Significant spike detected! %d reports today (Avg: %.1f). Pattern suggests systemic failure.", todayCount, avgLast3Days);
+            notificationService.createNotification(msg, NotificationType.SPIKE_DETECTION, null, "Regional Analytics");
+            System.out.println("Pattern Detected: Spike Surge triggered by " + todayCount + " new complaints.");
+        }
+
+        // ⏳ 8. STAGNATION ALERT (Pending > 24h)
+        long stagnantCount = active.stream()
+                .filter(c -> "Pending".equals(c.getStatus()) && (c.getLastUpdatedAt() != null ? c.getLastUpdatedAt().isBefore(now.minusHours(24)) : c.getCreatedDate().isBefore(now.minusHours(24))))
+                .count();
+        if (stagnantCount > 0) {
+            String msg = stagnantCount + " complaints have been STUCK in 'Pending' for over 24 hours. Systematic delays detected.";
+            notificationService.createNotification(msg, NotificationType.STAGNATION_ALERT, null, "Operational Health");
+            System.out.println("Monitoring Alert: Stagnation detected for " + stagnantCount + " complaints.");
+        }
+    }
+
     @Scheduled(fixedRate = 3600000)
     @Transactional
     public void checkEscalation() {
@@ -293,7 +323,12 @@ public class ComplaintService {
 
         LocalDateTime now = LocalDateTime.now();
         for (Complaint c : active) {
-            if (c.getDeadline() != null) {
+            if (c.getDeadline() != null && c.getCreatedDate() != null) {
+                // Calculate total SLA time in seconds
+                long totalSlaSeconds = java.time.Duration.between(c.getCreatedDate(), c.getDeadline()).toSeconds();
+                long remainingSeconds = java.time.Duration.between(now, c.getDeadline()).toSeconds();
+
+                // ❗ 5. SLA BREACH (CRITICAL FAILURE)
                 if (now.isAfter(c.getDeadline())) {
                     c.setStatus("Escalated");
                     c.setRemarks("Auto-escalated by system due to SLA breach.");
@@ -301,39 +336,21 @@ public class ComplaintService {
                     complaintRepository.save(c);
 
                     try {
-                        activityRepository.save(ComplaintActivity.builder()
-                                .complaintId(c.getId())
-                                .status("Escalated")
-                                .description("Auto-escalated by system: SLA breach/SLA Overdue.")
-                                .build());
-                    } catch (Exception e) {}
-
-                    try {
                         notificationService.createNotification(
-                                "Complaint #" + c.getId() + " has exceeded SLA deadline in " + c.getArea(),
                                 NotificationType.SLA_BREACH,
                                 c.getId(),
-                                null,
-                                c.getArea());
+                                "SLA breached for complaint #" + c.getId()
+                        );
                     } catch (Exception e) {}
-
-                    if (c.getUserId() != null) {
-                        try {
-                            notificationService.createNotification(
-                                    "Auto-Escalation: Complaint #" + c.getId() + " in " + c.getArea() + " is overdue.",
-                                    NotificationType.ESCALATED,
-                                    c.getUserId(),
-                                    c.getArea());
-                        } catch (Exception e) {}
-                    }
-                } else if (now.plusHours(2).isAfter(c.getDeadline())) {
+                } 
+                // ⏰ 4. SLA WARNING (PRE-BREACH: remainingTime ≤ 20% of SLA time)
+                else if (remainingSeconds > 0 && remainingSeconds <= (totalSlaSeconds * 0.2)) {
                     try {
                         notificationService.createNotification(
-                                "Complaint #" + c.getId() + " approaches SLA deadline within 2 hours in " + c.getArea(),
                                 NotificationType.SLA_WARNING,
                                 c.getId(),
-                                null,
-                                c.getArea());
+                                "SLA nearing breach for complaint #" + c.getId()
+                        );
                     } catch (Exception e) {}
                 }
             }

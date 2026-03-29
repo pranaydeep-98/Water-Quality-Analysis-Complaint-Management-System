@@ -18,4 +18,5 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     // Deduplication — prevent firing same alert type for same complaint twice
     boolean existsByComplaintIdAndType(Long complaintId, NotificationType type);
+    boolean existsByMessageAndType(String message, NotificationType type);
 }

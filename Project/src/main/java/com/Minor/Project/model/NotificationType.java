@@ -12,5 +12,9 @@ public enum NotificationType {
     SLA_WARNING,
     SLA_BREACH,
     REPEAT_SUBMISSION,
-    AREA_ALERT
+    AREA_ALERT,
+    ADMIN,
+    AREA_RISK_ESCALATION,
+    SPIKE_DETECTION,
+    STAGNATION_ALERT
 }

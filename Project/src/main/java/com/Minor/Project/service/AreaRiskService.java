@@ -14,9 +14,11 @@ import java.util.stream.Collectors;
 public class AreaRiskService {
 
     private final ComplaintRepository complaintRepository;
+    private final NotificationService notificationService;
 
     public List<AreaRiskDTO> calculateAreaRisk() {
-        // 1. Fetch all ACTIVE complaints (status != RESOLVED)
+        // ...Existing code for fetching activeComplaints and grouping...
+        // Fetch active complaints (status != RESOLVED)
         List<Complaint> activeComplaints = complaintRepository.findAll().stream()
                 .filter(c -> !"Resolved".equals(c.getStatus()))
                 .collect(Collectors.toList());
@@ -25,29 +27,36 @@ public class AreaRiskService {
             return Collections.emptyList();
         }
 
-        // 2. Group by normalized Area
-        // Key: Normalized Area Name, Value: List of Complaints in that area
         Map<String, List<Complaint>> groupedByArea = activeComplaints.stream()
                 .collect(Collectors.groupingBy(c -> normalizeArea(c.getArea())));
 
         List<AreaRiskDTO> result = new ArrayList<>();
 
         for (Map.Entry<String, List<Complaint>> entry : groupedByArea.entrySet()) {
-            String areaName = entry.getKey();
             List<Complaint> areaComplaints = entry.getValue();
 
-            // 3. Compute area risk score: average(riskScore of active complaints)
             double averageRisk = areaComplaints.stream()
                     .mapToInt(c -> c.getRiskScore() != null ? c.getRiskScore() : 0)
                     .average()
                     .orElse(0.0);
 
             int finalScore = (int) Math.round(averageRisk);
-
-            // 4. Categorize area risk
             String level = categorizeRisk(finalScore);
 
-            // Fetch representative zone (most frequent zone mentioned in this area's complaints)
+            // 🔥 6. AREA RISK ESCALATION (ADVANCED)
+            if (finalScore >= 80 && areaComplaints.size() >= 5) {
+                try {
+                    // We use null for complaintId as this is an aggregate area alert
+                    notificationService.createNotification(
+                        "Systemic Crisis: Highly critical risk score (" + finalScore + ") detected in " + entry.getValue().get(0).getArea() + " zone.",
+                        com.Minor.Project.model.NotificationType.AREA_RISK_ESCALATION,
+                        null,
+                        areaComplaints.get(0).getArea()
+                    );
+                } catch (Exception e) {}
+            }
+
+            // ...rest of result building...
             String representativeZone = areaComplaints.stream()
                     .map(Complaint::getZone)
                     .filter(Objects::nonNull)
@@ -57,8 +66,7 @@ public class AreaRiskService {
                     .map(Map.Entry::getKey)
                     .orElse("Unknown");
 
-            // Capitalize Area name for display if it was strictly lowercase
-            String displayName = areaComplaints.get(0).getArea(); // Use first occurrence as display name
+            String displayName = areaComplaints.get(0).getArea();
 
             result.add(AreaRiskDTO.builder()
                     .area(displayName)
@@ -69,9 +77,7 @@ public class AreaRiskService {
                     .build());
         }
 
-        // Sort by highest risk first
         result.sort((a, b) -> b.getAreaRiskScore().compareTo(a.getAreaRiskScore()));
-
         return result;
     }
 

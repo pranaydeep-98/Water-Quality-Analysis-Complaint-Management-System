@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   MessageSquare,
   Activity,
-  Settings,
   LogOut,
   Bell,
   AlertTriangle,
@@ -75,6 +74,26 @@ const TYPE_CONFIG = {
     label: 'Critical',
     color: 'notif-critical',
   },
+  ADMIN: {
+    icon: <AlertTriangle size={14} />,
+    label: 'Admin Notice',
+    color: 'notif-critical',
+  },
+  AREA_RISK_ESCALATION: {
+    icon: <AlertTriangle size={14} />,
+    label: 'Crisis',
+    color: 'notif-critical',
+  },
+  SPIKE_DETECTION: {
+    icon: <AlertTriangle size={14} />,
+    label: 'Spike Surge',
+    color: 'notif-critical',
+  },
+  STAGNATION_ALERT: {
+    icon: <Clock size={14} />,
+    label: 'Stagnant',
+    color: 'notif-warning',
+  },
 };
 
 function getConfig(type) {
@@ -93,58 +112,22 @@ function timeAgo(isoStr) {
 /* ------------------------------------------------------------------ */
 /* NotificationDropdown component                                       */
 /* ------------------------------------------------------------------ */
-const NotificationSidePanel = ({ onClose, navigate }) => {
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const res = await api.get('/notifications/admin/all');
-      setNotifications(res.data);
-    } catch (err) {
-      console.error('Failed to fetch notifications', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
-
+const NotificationSidePanel = ({ onClose, navigate, notifications, setNotifications }) => {
   const handleNotifClick = async (notif) => {
-    if (!notif.read) {
-      try {
-        await api.put(`/notifications/${notif.id}/read`);
-      } catch (err) {
-        console.error('Failed to mark notification as read', err);
-      }
+    if (!notif.isRead && notif.id) {
+      try { await api.put(`/notifications/${notif.id}/read`); } catch (err) { console.error(err); }
     }
-    
-    // Redirect if it's a complaint-related notification
     if (notif.complaintId) {
       navigate(`/admin/complaints?highlight=${notif.complaintId}`);
     }
     onClose();
   };
 
-  const handleDelete = async (e, id) => {
-    e.stopPropagation();
-    try {
-      await api.delete(`/notifications/${id}`);
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    } catch (err) {
-      console.error('Failed to delete notification', err);
-    }
-  };
-
   const clearAll = async () => {
     try {
       await api.delete('/notifications');
       setNotifications([]);
-    } catch (err) {
-      console.error('Failed to clear notifications', err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   return (
@@ -164,37 +147,20 @@ const NotificationSidePanel = ({ onClose, navigate }) => {
         </div>
 
         <div className="notif-list">
-          {loading && (
-            <div className="notif-empty">Loading…</div>
-          )}
-          {!loading && notifications.length === 0 && (
+          {notifications.length === 0 && (
             <div className="notif-empty">No notifications yet.</div>
           )}
-          {!loading && notifications.map(notif => {
-            const cfg = getConfig(notif.type);
-            return (
-              <div
-                key={notif.id}
-                className={`notif-item ${cfg.color} ${!notif.read ? 'unread' : ''}`}
-                onClick={() => handleNotifClick(notif)}
-              >
-                <div className="notif-item-icon">{cfg.icon}</div>
-                <div className="notif-item-body">
-                  <p className="notif-message">{notif.message}</p>
-                  <div className="notif-meta">
-                    <span className={`notif-badge ${cfg.color}`}>{cfg.label}</span>
-                    <span className="notif-time">{timeAgo(notif.createdAt)}</span>
-                  </div>
-                </div>
-                {!notif.read && <div className="notif-unread-dot" />}
-                <button 
-                  className="notif-delete-btn always-show" 
-                  onClick={(e) => handleDelete(e, notif.id)}>
-                  <X size={14} />
-                </button>
-              </div>
-            );
-          })}
+          {notifications.map(n => (
+            <div 
+              key={n.id} 
+              className={`notification-item ${!n.isRead ? 'unread' : ''} glass`}
+              onClick={() => handleNotifClick(n)}
+              data-type={n.type}
+            >
+              <p>{n.message}</p>
+              <small>{n.type}</small>
+            </div>
+          ))}
         </div>
       </div>
     </>
@@ -208,7 +174,7 @@ const AdminLayout = () => {
   const { user = null, logout = () => {} } = useAuth() || {};
   const [stats, setStats] = useState({ complaints: 0, slaBreaches: 0 });
   const [bellOpen, setBellOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
   const bellRef = useRef(null);
 
   // Fetch sidebar badges
@@ -229,18 +195,15 @@ const AdminLayout = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch unread notification count for bell badge
+  // Fetch notifications
   useEffect(() => {
-    const fetchUnread = async () => {
-      try {
-        const res = await api.get('/notifications/admin/unread');
-        setUnreadCount(res.data.length);
-      } catch (err) {
-        // silently ignore — badge is non-critical
-      }
+    const fetchNotifications = () => {
+      api.get('/notifications/admin')
+        .then(res => setNotifications(res.data))
+        .catch(err => console.error(err));
     };
-    fetchUnread();
-    const interval = setInterval(fetchUnread, 30000);
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000); // Polling for real-time feel
     return () => clearInterval(interval);
   }, []);
 
@@ -259,7 +222,6 @@ const AdminLayout = () => {
     { name: 'Dashboard',    icon: <LayoutDashboard size={20} />, path: '/admin/dashboard' },
     { name: 'Complaints',   icon: <MessageSquare size={20} />,   path: '/admin/complaints', badge: stats.complaints },
     { name: 'SLA Monitor',  icon: <Activity size={20} />,        path: '/admin/sla', badge: stats.slaBreaches },
-    { name: 'Settings',     icon: <Settings size={20} />,        path: '/admin/settings' },
   ];
 
   const navigate = useNavigate();
@@ -312,8 +274,10 @@ const AdminLayout = () => {
               aria-label="Notifications"
             >
               <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              {notifications.length > 0 && (
+                <span className="notification-badge">
+                  {notifications.length}
+                </span>
               )}
             </button>
             {/* Notification side panel is rendered at root to avoid stacking context issues */}
@@ -326,7 +290,12 @@ const AdminLayout = () => {
       </main>
 
       {bellOpen && (
-        <NotificationSidePanel onClose={() => setBellOpen(false)} navigate={navigate} />
+        <NotificationSidePanel 
+          notifications={notifications} 
+          setNotifications={setNotifications}
+          onClose={() => setBellOpen(false)} 
+          navigate={navigate} 
+        />
       )}
     </div>
   );

@@ -36,17 +36,14 @@ public class NotificationService {
             }
 
             // Deduplication logic for system-generated alerts
-            if (complaintId != null &&
-                    (type == NotificationType.SYSTEM_ALERT || 
-                     type == NotificationType.SLA_ALERT ||
-                     type == NotificationType.HIGH_RISK ||
-                     type == NotificationType.SLA_WARNING ||
-                     type == NotificationType.SLA_BREACH ||
-                     type == NotificationType.REPEAT_SUBMISSION ||
-                     type == NotificationType.AREA_ALERT)) {
+            if (complaintId != null) {
                 if (notificationRepository.existsByComplaintIdAndType(complaintId, type)) {
-                    System.out.println("Info: " + type + " already exists for complaint #"
-                            + complaintId + " — skipping duplicate");
+                    System.out.println("Info: " + type + " already exists for complaint #" + complaintId + " — skipping duplicate");
+                    return;
+                }
+            } else if (type == NotificationType.SYSTEM_ALERT) {
+                if (notificationRepository.existsByMessageAndType(message, type)) {
+                    System.out.println("Info: Summary alert already exists — skipping duplicate");
                     return;
                 }
             }
@@ -96,7 +93,7 @@ public class NotificationService {
         Optional<Notification> opt = notificationRepository.findById(notificationId);
         if (opt.isEmpty()) return false;
         Notification n = opt.get();
-        n.setRead(true);
+        n.setIsRead(true);
         notificationRepository.save(n);
         return true;
     }
@@ -130,7 +127,7 @@ public class NotificationService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markAllAsRead(Long userId) {
         List<Notification> unread = notificationRepository.findByUserIdAndIsReadFalse(userId);
-        unread.forEach(n -> n.setRead(true));
+        unread.forEach(n -> n.setIsRead(true));
         notificationRepository.saveAll(unread);
     }
 }

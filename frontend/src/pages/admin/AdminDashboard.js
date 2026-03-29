@@ -39,7 +39,6 @@ const AdminDashboard = () => {
   const [slaOverview, setSlaOverview] = useState({ onTrack: 0, nearBreach: 0, breached: 0 });
   const [areaRisks, setAreaRisks] = useState([]);
   const [criticalComplaints, setCriticalComplaints] = useState([]);
-  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -88,29 +87,6 @@ const AdminDashboard = () => {
         .sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0))
         .slice(0, 8);
       setCriticalComplaints(critical);
-
-      // 5. Build Alerts
-      const newAlerts = [];
-      if (breachedCount > 0) {
-        newAlerts.push({
-          id: 'alert-sla',
-          message: `${breachedCount} operations have breached SLA deadlines.`,
-          type: 'danger',
-          category: 'SLA Breach'
-        });
-      }
-
-      const urgentRiskCount = allComplaints.filter(c => (c.riskScore || 0) > 90 && c.status !== 'Resolved').length;
-      if (urgentRiskCount > 0) {
-        newAlerts.push({
-          id: 'alert-risk',
-          message: `${urgentRiskCount} extreme risk complaints require immediate attention.`,
-          type: 'warning',
-          category: 'High Risk'
-        });
-      }
-
-      setAlerts(newAlerts);
 
       // 6. Fetch Chart Data
       const [statusRes, trendRes, areaRiskRes] = await Promise.all([
@@ -417,18 +393,6 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* System Alerts Footer */}
-      {alerts.length > 0 && (
-        <div className="dashboard-alerts-footer">
-          {alerts.map(alert => (
-            <div key={alert.id} className={`system-alert-toast ${alert.type}`}>
-               <Bell size={16} />
-               <span className="msg"><strong>{alert.category}:</strong> {alert.message}</span>
-               <button onClick={() => setAlerts(alerts.filter(a => a.id !== alert.id))}><X size={14} /></button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

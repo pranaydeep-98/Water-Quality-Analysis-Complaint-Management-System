@@ -30,8 +30,9 @@ public class Notification {
     @Column(name = "complaint_id")
     private Long complaintId;
 
+    @Builder.Default
     @Column(name = "is_read")
-    private boolean isRead;
+    private Boolean isRead = false;
 
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
