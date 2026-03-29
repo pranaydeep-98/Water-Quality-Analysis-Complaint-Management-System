@@ -19,25 +19,17 @@ const UserDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({ total: 0, resolved: 0, pending: 0, inProgress: 0, escalated: 0, overdue: 0 });
   const [recentComplaints, setRecentComplaints] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = async () => {
-    setLoading(true);
     try {
       const statsRes = await api.get('/complaints/metrics');
       setStats(statsRes.data || { total: 0, resolved: 0, pending: 0, inProgress: 0, escalated: 0, overdue: 0 });
 
       const complRes = await api.get('/complaints/user');
       setRecentComplaints(complRes.data?.slice(0, 5) || []);
-
-      const notifRes = await api.get('/notifications');
-      setNotifications(notifRes.data?.slice(0, 4) || []);
       
     } catch (err) {
       console.error("Failed to fetch user dashboard data", err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -55,26 +47,7 @@ const UserDashboard = () => {
     return 'status-gray';
   };
 
-  const getNotifIcon = (type) => {
-    if (type === 'ESCALATED' || type === 'SYSTEM_ALERT') return <Zap size={16} className="text-danger" />;
-    if (type === 'RESOLVED') return <CheckCircle size={16} className="text-success" />;
-    return <Bell size={16} className="text-primary" />;
-  };
 
-  const getTimeAgo = (date) => {
-    const seconds = Math.floor((new Date() - new Date(date)) / 1000);
-    let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + " years ago";
-    interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + " months ago";
-    interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + " days ago";
-    interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + " hours ago";
-    interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + " minutes ago";
-    return Math.floor(seconds) + " seconds ago";
-  };
 
   return (
     <div className="user-dashboard-wrapper">
@@ -120,8 +93,8 @@ const UserDashboard = () => {
         </div>
       </div>
 
-      <div className="dashboard-grid user-grid">
-         <div className="recent-activity-panel glass-card">
+      <div className="dashboard-grid user-logs-only">
+         <div className="recent-activity-panel glass-card full-width-panel">
             <div className="card-header">
                <h2>Action Log</h2>
                <button className="text-btn" onClick={() => navigate('/user/complaints')}>View All Logs <ArrowRight size={14} /></button>
@@ -143,30 +116,6 @@ const UserDashboard = () => {
                  <div className="empty-state">No active operational logs.</div>
                )}
             </div>
-         </div>
-
-         <div className="notifications-panel glass-card">
-            <div className="card-header">
-               <h2>System Notifications</h2>
-               <Bell size={18} className="text-muted" />
-            </div>
-
-            <div className="notif-list">
-               {notifications.length > 0 ? notifications.map(n => (
-                 <div key={n.id} className={`notif-item ${n.isRead ? 'read' : 'unread'}`}>
-                    <div className="notif-icon-wrap">
-                       {getNotifIcon(n.type)}
-                    </div>
-                    <div className="notif-content">
-                       <p>{n.message}</p>
-                       <span>{getTimeAgo(n.createdAt)}</span>
-                    </div>
-                 </div>
-               )) : (
-                 <div className="empty-state">No operational alerts.</div>
-               )}
-            </div>
-            <button className="view-all-btn mt-auto" onClick={() => navigate('/user/notifications')}>View Full Alert History</button>
          </div>
       </div>
     </div>

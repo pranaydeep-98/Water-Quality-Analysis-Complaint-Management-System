@@ -8,5 +8,6 @@ public class ComplaintRequest {
     private String phoneNumber;
     private String zone;
     private String issueType;
+    private String description;
     private String createdDate;
 }

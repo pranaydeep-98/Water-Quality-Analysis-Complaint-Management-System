@@ -2,11 +2,12 @@ package com.Minor.Project.model;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "complaints")
+@Table(name = "complaints", indexes = {
+    @Index(name = "idx_complaint_dup", columnList = "area, issue_type, created_date")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -27,6 +28,9 @@ public class Complaint {
     @Column(name = "issue_type")
     private String issueType;
 
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     private String severity;
     private String status;
 
@@ -39,7 +43,7 @@ public class Complaint {
     @Column(name = "created_date")
     private LocalDateTime createdDate;
 
-    private LocalDate deadline;
+    private LocalDateTime deadline;
 
     @Column(name = "last_updated_at")
     private LocalDateTime lastUpdatedAt;
@@ -49,6 +53,9 @@ public class Complaint {
 
     @Column(name = "duplicate_count")
     private Integer duplicateCount;
+
+    @Column(name = "repeat_user")
+    private Boolean repeatUser;
 
     @PrePersist
     protected void onCreate() {
@@ -66,6 +73,9 @@ public class Complaint {
         }
         if (duplicateCount == null) {
             duplicateCount = 0;
+        }
+        if (repeatUser == null) {
+            repeatUser = false;
         }
     }
 

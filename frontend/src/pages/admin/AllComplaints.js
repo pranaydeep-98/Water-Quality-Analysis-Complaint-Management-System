@@ -3,7 +3,6 @@ import {
   Search, 
   Eye, 
   X,
-  MapPin,
   Clock,
   ShieldAlert,
   Activity,
@@ -15,13 +14,17 @@ import {
 import api from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import './AllComplaints.css';
+import { useLocation } from 'react-router-dom';
 
 const AllComplaints = () => {
   const [complaints, setComplaints] = useState([]);
   const [filter, setFilter] = useState('All');
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'desc' });
+  const [highlightId, setHighlightId] = useState(null);
   const { showToast } = useToast();
+  const location = useLocation();
 
   const fetchComplaints = async () => {
     try {
@@ -38,6 +41,21 @@ const AllComplaints = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Handle highlight from URL (for notification clicking)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const hId = params.get('highlight');
+    if (hId && complaints.length > 0) {
+      setHighlightId(parseInt(hId));
+      setTimeout(() => {
+        const el = document.getElementById(`complaint-row-${hId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+    }
+  }, [location.search, complaints]);
+
   const handleUpdateSuccess = (updatedComplaint) => {
     setComplaints(prev => prev.map(c => c.id === updatedComplaint.id ? { ...c, ...updatedComplaint } : c));
     if (selectedComplaint && selectedComplaint.id === updatedComplaint.id) {
@@ -45,7 +63,7 @@ const AllComplaints = () => {
     }
   };
 
-  const handleQuickAction = async (complaint, status) => {
+  const handleQuickAction = async (complaint, status, source = 'Quick Action') => {
     if (status === 'Resolved') {
       if (!window.confirm("Are you sure you want to mark this as Resolved?")) return;
     }
@@ -53,9 +71,9 @@ const AllComplaints = () => {
     try {
       const res = await api.put(`/complaints/${complaint.id}/status`, {
         status,
-        remarks: `Quick Action: ${status} initiated by admin.`
+        remarks: `${source}: ${status} initiated by admin.`
       });
-      showToast(res.data?.message || `Complaint #${complaint.id} updated to ${status}`, status === 'Escalated' ? 'warning' : 'success');
+      showToast(res.data?.message || `Complaint #${complaint.id} updated to ${status}`, 'success');
       handleUpdateSuccess({ ...complaint, status, lastUpdatedAt: new Date().toISOString() });
     } catch (err) {
       console.error("Action error:", err);
@@ -64,13 +82,52 @@ const AllComplaints = () => {
     }
   };
 
-  const filteredComplaints = complaints.filter(c => {
-    const matchesFilter = filter === 'All' || c.severity === filter || c.status === filter;
-    const matchesSearch = c.area.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.issueType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.id.toString().includes(searchTerm);
-    return matchesFilter && matchesSearch;
-  });
+  const requestSort = (key) => {
+    let direction = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSLAStatus = (complaint) => {
+    if (complaint.status === 'Resolved') return { label: 'Met', class: 'sla-met', isBreached: false };
+    if (!complaint.deadline) return { label: 'On Track', class: 'sla-track', isBreached: false };
+    const over = new Date() > new Date(complaint.deadline);
+    return over 
+      ? { label: 'Breached', class: 'sla-breached', isBreached: true } 
+      : { label: 'On Track', class: 'sla-track', isBreached: false };
+  };
+
+  const filteredComplaints = complaints
+    .filter(c => {
+      const matchesFilter = filter === 'All' || c.severity === filter || c.status === filter;
+      const matchesSearch = c.area.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            c.issueType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            c.id.toString().includes(searchTerm);
+      return matchesFilter && matchesSearch;
+    })
+    .sort((a, b) => {
+      // MANDATORY: Priority sorting - Breached DESC, then riskScore DESC
+      const slaA = getSLAStatus(a).isBreached ? 1 : 0;
+      const slaB = getSLAStatus(b).isBreached ? 1 : 0;
+      
+      if (slaA !== slaB) return slaB - slaA;
+      
+      // Secondary sorting by riskScore (unless user clicked a header)
+      if (sortConfig.key === 'id') {
+         // Default sort when no specific sort is picked
+         return b.riskScore - a.riskScore; 
+      }
+
+      if (a[sortConfig.key] < b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (a[sortConfig.key] > b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
 
   const getRiskColor = (score) => {
     if (score >= 75) return 'text-danger';
@@ -91,7 +148,7 @@ const AllComplaints = () => {
             />
          </div>
          <div className="filter-chips">
-            {['All', 'HIGH', 'MEDIUM', 'LOW', 'Pending', 'In Progress', 'Resolved', 'Escalated'].map(f => (
+            {['All', 'HIGH', 'MEDIUM', 'LOW', 'Pending', 'In Progress', 'Resolved'].map(f => (
               <button 
                 key={f} 
                 className={`chip ${filter === f ? 'active' : ''}`}
@@ -108,62 +165,84 @@ const AllComplaints = () => {
           <table>
             <thead>
               <tr>
-                <th>ID</th>
+                <th onClick={() => requestSort('id')} className="sortable">ID {sortConfig.key === 'id' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
                 <th>Citizen Name</th>
                 <th>Phone</th>
                 <th>Area / Zone</th>
-                <th>Issue Type</th>
+                <th>Issue Type / Duplicates</th>
                 <th>Severity</th>
-                <th>Risk Score</th>
+                <th onClick={() => requestSort('riskScore')} className="sortable">Risk Score {sortConfig.key === 'riskScore' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
+                <th onClick={() => requestSort('duplicateCount')} className="sortable">Unique Reporters {sortConfig.key === 'duplicateCount' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
                 <th>Status</th>
-                <th>Last Update</th>
+                <th>SLA</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredComplaints.length > 0 ? filteredComplaints.map(c => (
-                <tr key={c.id}>
-                  <td><span className="id-text">#{c.id}</span></td>
-                  <td>{c.citizenName || 'Unknown'}</td>
-                  <td>{c.phoneNumber || 'N/A'}</td>
-                  <td>{c.area} {c.zone ? `(${c.zone})` : ''}</td>
-                  <td>
-                    {c.issueType}
-                    {c.duplicateCount > 0 && (
-                        <span className="duplicate-badge">
-                            {c.duplicateCount} duplicate{c.duplicateCount > 1 ? 's' : ''}
-                        </span>
-                    )}
-                  </td>
-                  <td><span className={`badge badge-${c.severity?.toLowerCase()}`}>{c.severity}</span></td>
-                  <td><span className={`risk-val ${getRiskColor(c.riskScore)}`}>{c.riskScore}</span></td>
-                  <td><span className={`status-badge ${c.status?.toLowerCase().replace(' ', '-')}`}>{c.status}</span></td>
-                  <td className="text-muted"><small>{c.lastUpdatedAt ? new Date(c.lastUpdatedAt).toLocaleString() : 'N/A'}</small></td>
-                  <td>
-                    <div className="quick-actions-flex">
-                      {c.status === 'Pending' && (
-                        <button className="icon-btn progress-btn" title="Deploy In Progress" onClick={() => handleQuickAction(c, 'In Progress')}>
-                          <Play size={16} />
+              {filteredComplaints.length > 0 ? filteredComplaints.map(c => {
+                const sla = getSLAStatus(c);
+                const isHighlighted = highlightId === c.id;
+                return (
+                  <tr 
+                    key={c.id} 
+                    id={`complaint-row-${c.id}`}
+                    className={`${sla.isBreached ? 'breached-row' : ''} ${isHighlighted ? 'highlight-active' : ''}`}
+                  >
+                    <td><span className="id-text">#{c.id}</span></td>
+                    <td>{c.citizenName || 'Unknown'}</td>
+                    <td>{c.phoneNumber || 'N/A'}</td>
+                    <td>{c.area} {c.zone ? `(${c.zone})` : ''}</td>
+                    <td>
+                      <div className="issue-cell">
+                        <span>{c.issueType}</span>
+                        {c.duplicateCount > 1 && (
+                            <span className="duplicate-badge">
+                                {c.duplicateCount} reporting
+                            </span>
+                        )}
+                        {c.repeatUser && <span className="repeat-badge">Repeat Submission</span>}
+                        {sla.isBreached && <span className="breached-label">⚠ BREACHED – ACTION REQUIRED</span>}
+                      </div>
+                    </td>
+                    <td><span className={`badge badge-${c.severity?.toLowerCase()}`}>{c.severity}</span></td>
+                    <td><span className={`risk-val ${getRiskColor(c.riskScore)}`}>{c.riskScore}</span></td>
+                    <td className="text-center">{c.duplicateCount}</td>
+                    <td><span className={`status-badge ${c.status?.toLowerCase().replace(' ', '-')}`}>{c.status}</span></td>
+                    <td><span className={`sla-badge ${sla.class}`}>{sla.label}</span></td>
+                    <td>
+                      <div className="quick-actions-flex">
+                        {sla.isBreached && c.status !== 'Resolved' ? (
+                          <div className="breached-actions">
+                             <button className="btn-resolve-now" onClick={() => handleQuickAction(c, 'Resolved', 'SLA Critical')}>
+                               <Check size={14} /> Resolve Now
+                             </button>
+                             <button className="btn-reassign" onClick={() => handleQuickAction(c, 'Escalated', 'SLA Reassign')}>
+                               <AlertTriangle size={14} /> Reassign
+                             </button>
+                          </div>
+                        ) : (
+                          <>
+                            {c.status === 'Pending' && (
+                              <button className="icon-btn progress-btn" title="Deploy In Progress" onClick={() => handleQuickAction(c, 'In Progress')}>
+                                <Play size={16} />
+                              </button>
+                            )}
+                            {(c.status === 'Pending' || c.status === 'In Progress') && (
+                              <button className="icon-btn success-btn" title="Mark Resolved" onClick={() => handleQuickAction(c, 'Resolved')}>
+                                <Check size={16} />
+                              </button>
+                            )}
+                          </>
+                        )}
+                        <button className="icon-btn action-btn-trigger" title="View Details" onClick={() => setSelectedComplaint(c)}>
+                          <Eye size={18} />
                         </button>
-                      )}
-                      {(c.status === 'Pending' || c.status === 'In Progress' || c.status === 'Escalated') && (
-                        <button className="icon-btn success-btn" title="Mark Resolved" onClick={() => handleQuickAction(c, 'Resolved')}>
-                          <Check size={16} />
-                        </button>
-                      )}
-                      {(c.status === 'Pending' || c.status === 'In Progress') && (
-                        <button className="icon-btn danger-btn" title="Flag Escalated" onClick={() => handleQuickAction(c, 'Escalated')}>
-                          <AlertTriangle size={16} />
-                        </button>
-                      )}
-                      <button className="icon-btn action-btn-trigger" title="View Details" onClick={() => setSelectedComplaint(c)}>
-                        <Eye size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan="8" className="text-center py-8">No active operational logs.</td></tr>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="11" className="text-center py-8">No active operational logs.</td></tr>
               )}
             </tbody>
           </table>
@@ -196,7 +275,6 @@ const ActionModal = ({ complaint, onClose, onUpdateSuccess, refreshList }) => {
     }
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchActivities();
   }, [complaint.id]);
@@ -208,36 +286,26 @@ const ActionModal = ({ complaint, onClose, onUpdateSuccess, refreshList }) => {
 
     setLoading(true);
     try {
-      // Using the more robust status endpoint with JSON body
       const res = await api.put(`/complaints/${complaint.id}/status`, {
         status,
         remarks: `Action: ${status} initiated by admin.`
       });
       
       const successMessage = res.data?.message || `Complaint #${complaint.id} updated to ${status}`;
-      showToast(successMessage, status === 'Escalated' ? 'warning' : 'success');
+      showToast(successMessage, 'success');
 
-      // Update local state and parent
       await fetchActivities();
       if (refreshList) await refreshList();
-      
-      // Update the complaint object passed to modal to reflect status change for button rules
       onUpdateSuccess({ ...complaint, status, lastUpdatedAt: new Date().toISOString() });
 
     } catch (err) {
       console.error("Action error:", err);
-      const errorMessage = err.response?.data?.message 
-        || (typeof err.response?.data === 'string' ? err.response.data : null)
-        || err.response?.statusText 
-        || err.message 
-        || "Server error";
+      const errorMessage = err.response?.data?.message || err.message || "Server error";
       showToast("Operation failed: " + errorMessage, "error");
     } finally {
       setLoading(false);
     }
   };
-
-  const status = complaint.status;
 
   return (
     <div className="modal-overlay">
@@ -251,61 +319,46 @@ const ActionModal = ({ complaint, onClose, onUpdateSuccess, refreshList }) => {
            <div className="terminal-layout">
               <div className="terminal-params">
                  <div className="citizen-details-block">
-                   <h4>👤 Citizen Details</h4>
-                   <div className="detail-row">
-                     <span className="detail-label">Name</span>
-                     <span className="detail-value">{complaint.citizenName || 'Unknown'}</span>
-                   </div>
-                   <div className="detail-row">
-                     <span className="detail-label">Phone</span>
-                     <span className="detail-value">{complaint.phoneNumber || 'N/A'}</span>
-                   </div>
-                   <div className="detail-row">
-                     <span className="detail-label">Area</span>
-                     <span className="detail-value">{complaint.area}</span>
-                   </div>
-                   <div className="detail-row">
-                     <span className="detail-label">Zone</span>
-                     <span className="detail-value">{complaint.zone || 'N/A'}</span>
-                   </div>
-                   <div className="detail-row">
-                     <span className="detail-label">Deadline</span>
-                     <span className="detail-value" style={{color: complaint.deadline && new Date(complaint.deadline) < new Date() && complaint.status !== 'Resolved' ? 'red' : 'green'}}>
-                       {complaint.deadline || 'N/A'}
-                     </span>
-                   </div>
+                    <h4>👤 Citizen Details</h4>
+                    <div className="detail-row">
+                      <span className="detail-label">Name</span>
+                      <span className="detail-value">{complaint.citizenName || 'Unknown'}</span>
+                    </div>
+                    <div className="detail-row">
+                      <span className="detail-label">Phone</span>
+                      <span className="detail-value">{complaint.phoneNumber || 'N/A'}</span>
+                    </div>
+                    <div className="detail-row">
+                      <span className="detail-label">Area</span>
+                      <span className="detail-value">{complaint.area}</span>
+                    </div>
+                    <div className="detail-row">
+                      <span className="detail-label">Deadline</span>
+                      <span className="detail-value" style={{color: complaint.deadline && new Date(complaint.deadline) < new Date() && complaint.status !== 'Resolved' ? 'red' : 'green'}}>
+                        {complaint.deadline || 'N/A'}
+                      </span>
+                    </div>
                  </div>
                  <div style={{marginTop: '15px'}}>
-                   <div className="param-block"><label><ShieldAlert size={14} /> Auto-Assigned Severity</label><span className={`badge badge-${complaint.severity?.toLowerCase()}`}>{complaint.severity}</span></div>
-                   <div className="param-block"><label>Current Status</label><span className={`status-badge ${status?.toLowerCase().replace(' ', '-')}`}>{status}</span></div>
+                    <div className="param-block"><label><ShieldAlert size={14} /> Severity</label><span className={`badge badge-${complaint.severity?.toLowerCase()}`}>{complaint.severity}</span></div>
+                    <div className="param-block"><label>Status</label><span className={`status-badge ${complaint.status?.toLowerCase().replace(' ', '-')}`}>{complaint.status}</span></div>
                  </div>
               </div>
 
               <div className="action-input-section">
                  <div className="status-trigger-grid">
-                    {status === 'Pending' && (
+                    {complaint.status !== 'Resolved' && (
                        <>
-                         <button className="btn-op progress" disabled={loading} onClick={() => performAction('In Progress')}><Play size={16} /> Deploy In Progress</button>
+                         <button className="btn-op progress" disabled={loading} onClick={() => performAction('In Progress')}><Play size={16} /> Deploy Staff</button>
                          <button className="btn-op success" disabled={loading} onClick={() => performAction('Resolved')}><CheckCircle size={16} /> Mark Resolved</button>
-                         <button className="btn-op danger" disabled={loading} onClick={() => performAction('Escalated')}><AlertTriangle size={16} /> Flag Escalated</button>
+                         <button className="btn-op danger" disabled={loading} onClick={() => performAction('Escalated')}><ShieldAlert size={16} /> Escalate</button>
                        </>
                     )}
 
-                    {status === 'In Progress' && (
-                       <>
-                         <button className="btn-op success" disabled={loading} onClick={() => performAction('Resolved')}><CheckCircle size={16} /> Mark Resolved</button>
-                         <button className="btn-op danger" disabled={loading} onClick={() => performAction('Escalated')}><AlertTriangle size={16} /> Flag Escalated</button>
-                       </>
-                    )}
-
-                    {status === 'Escalated' && (
-                       <button className="btn-op success" disabled={loading} onClick={() => performAction('Resolved')}><CheckCircle size={16} /> Mark Resolved</button>
-                    )}
-
-                    {status === 'Resolved' && (
+                    {complaint.status === 'Resolved' && (
                        <div className="resolved-confirmation glass">
                           <CheckCircle className="text-success" size={20} />
-                          <span>This complaint has been successfully resolved and closed.</span>
+                          <span>This complaint has been resolved.</span>
                        </div>
                     )}
                  </div>

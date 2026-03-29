@@ -225,3 +225,296 @@
   width: 100%;
   margin: 0 auto;
 }
+
+/* ------------------------------------------------------------------ */
+/* Bell icon active state                                               */
+/* ------------------------------------------------------------------ */
+.header-icon-btn.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(27, 175, 191, 0.1);
+}
+
+/* ------------------------------------------------------------------ */
+/* Unread count badge on bell                                           */
+/* ------------------------------------------------------------------ */
+.bell-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--high-sev, #ef4444);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--bg-color, #0a1628);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Notification Side Panel                                              */
+/* ------------------------------------------------------------------ */
+.notif-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.notif-sidepanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  max-width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 22, 40, 0.97);
+  border-left: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  box-shadow: -10px 0 48px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px);
+  z-index: 1001;
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.notif-sidepanel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.06));
+}
+
+.notif-header-title-box {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.notif-all-clear-top {
+  background: rgba(27, 175, 191, 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(27, 175, 191, 0.2);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.notif-all-clear-top:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.notif-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.notif-close-btn:hover {
+  color: white;
+}
+
+.notif-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Notification list                                                    */
+/* ------------------------------------------------------------------ */
+.notif-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.notif-list::-webkit-scrollbar { width: 4px; }
+.notif-list::-webkit-scrollbar-track { background: transparent; }
+.notif-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+
+.notif-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.85rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Individual notification row                                          */
+/* ------------------------------------------------------------------ */
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0.75rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+
+.notif-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.notif-item.unread {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Type-based left border colours */
+.notif-item.notif-critical  { border-left-color: #ef4444; }
+.notif-item.notif-warning   { border-left-color: #f97316; }
+.notif-item.notif-info      { border-left-color: #3b82f6; }
+
+/* Icon circle */
+.notif-item-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.notif-critical .notif-item-icon  { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.notif-warning  .notif-item-icon  { background: rgba(249,115, 22, 0.15); color: #f97316; }
+.notif-info     .notif-item-icon  { background: rgba( 59,130,246, 0.15); color: #3b82f6; }
+
+.notif-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-message {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin: 0 0 4px;
+  color: var(--text-primary, #e2e8f0);
+  word-break: break-word;
+}
+
+.notif-item.unread .notif-message {
+  font-weight: 600;
+}
+
+.notif-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 100px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.notif-critical.notif-badge, .notif-badge.notif-critical {
+  background: rgba(239, 68, 68, 0.15); color: #ef4444;
+}
+.notif-warning.notif-badge, .notif-badge.notif-warning {
+  background: rgba(249,115, 22, 0.15); color: #f97316;
+}
+.notif-info.notif-badge, .notif-badge.notif-info {
+  background: rgba( 59,130,246, 0.15); color: #3b82f6;
+}
+
+.notif-time {
+  font-size: 0.7rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* Unread dot indicator */
+.notif-unread-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary, #1bafbf);
+  margin-top: 6px;
+}
+
+/* Delete Button & Footer */
+.notif-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+  padding: 6px;
+  margin-top: 2px;
+  border-radius: 4px;
+}
+.notif-item:hover .notif-delete-btn, .notif-delete-btn.always-show {
+  opacity: 0.5;
+}
+.notif-delete-btn:hover, .notif-delete-btn.always-show:hover {
+  opacity: 1;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.notif-sidepanel-footer {
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--glass-border, rgba(255,255,255,0.06));
+  display: flex;
+  justify-content: center;
+}
+
+.clear-all-btn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 0.6rem 2rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.clear-all-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+

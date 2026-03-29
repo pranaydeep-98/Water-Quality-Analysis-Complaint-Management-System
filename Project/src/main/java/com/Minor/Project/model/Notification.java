@@ -27,10 +27,14 @@ public class Notification {
     @Column(name = "user_id")
     private Long userId;
 
+    @Column(name = "complaint_id")
+    private Long complaintId;
+
     @Column(name = "is_read")
     private boolean isRead;
 
-    private LocalDateTime createdAt;
+    @Builder.Default
+    private LocalDateTime createdAt = LocalDateTime.now();
 
     @PrePersist
     protected void onCreate() {

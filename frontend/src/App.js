@@ -9,9 +9,8 @@ import UserLayout from './components/UserLayout';
 import AdminLayout from './components/AdminLayout';
 import SubmitComplaint from './pages/user/SubmitComplaint';
 import MyComplaintsPage from './pages/MyComplaintsPage';
-import UserNotifications from './pages/user/UserNotifications';
+
 import AllComplaints from './pages/admin/AllComplaints';
-import RiskMonitor from './pages/admin/RiskMonitor';
 import SLAMonitor from './pages/admin/SLAMonitor';
 import Settings from './pages/admin/Settings';
 import { ToastProvider } from './context/ToastContext';
@@ -31,7 +30,6 @@ function App() {
           <Route element={<PrivateRoute requiredRole="ADMIN"><AdminLayout /></PrivateRoute>}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/complaints" element={<AllComplaints />} />
-            <Route path="/admin/risk" element={<RiskMonitor />} />
             <Route path="/admin/sla" element={<SLAMonitor />} />
             <Route path="/admin/settings" element={<Settings />} />
           </Route>
@@ -41,7 +39,7 @@ function App() {
             <Route path="/user/dashboard" element={<UserDashboard />} />
             <Route path="/user/submit" element={<SubmitComplaint />} />
             <Route path="/user/complaints" element={<MyComplaintsPage />} />
-            <Route path="/user/notifications" element={<UserNotifications />} />
+
           </Route>
 
           {/* Default */}

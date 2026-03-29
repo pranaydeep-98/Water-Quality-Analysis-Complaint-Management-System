@@ -5,7 +5,6 @@ import {
   AlertTriangle, 
   ChevronRight, 
   ShieldCheck,
-  CheckCircle,
   Eye
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -64,7 +63,6 @@ const SLAMonitor = () => {
       </div>
 
       <div className="sla-lists-grid">
-         {/* OVERDUE LIST */}
          <div className="sla-list-box glass-card danger-zone">
             <div className="list-header">
                <AlertTriangle size={20} />
@@ -88,7 +86,6 @@ const SLAMonitor = () => {
             </div>
          </div>
 
-         {/* NEARING LIST */}
          <div className="sla-list-box glass-card warning-zone">
             <div className="list-header">
                <Clock size={20} />

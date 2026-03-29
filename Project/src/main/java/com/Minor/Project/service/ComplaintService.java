@@ -5,15 +5,20 @@ import com.Minor.Project.model.*;
 import com.Minor.Project.repository.ComplaintRepository;
 import com.Minor.Project.repository.UserRepository;
 import com.Minor.Project.repository.ComplaintActivityRepository;
+import com.Minor.Project.repository.SlaConfigRepository;
 import com.Minor.Project.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,13 +29,25 @@ public class ComplaintService {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final ComplaintActivityRepository activityRepository;
+    private final SlaConfigRepository slaConfigRepository;
     private final JwtUtil jwtUtil;
+
+    @Value("${duplicate.timeWindowHours:24}")
+    private int timeWindowHours;
+
+    @Value("${risk.alert.threshold:75}")
+    private int riskAlertThreshold;
 
     @Transactional
     public Complaint save(ComplaintRequest request, String token) {
         String email = jwtUtil.extractUsername(token.replace("Bearer ", ""));
         User user = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("User not found"));
 
+        // 1. Normalize Data
+        String normalizedArea = request.getArea() != null ? request.getArea().trim().toLowerCase() : "";
+        String normalizedIssue = request.getIssueType() != null ? request.getIssueType().trim().toLowerCase() : "";
+
+        // Determine Severity and Weight
         String severity = "LOW";
         int severityWeight = 1;
         if (request.getIssueType() != null) {
@@ -44,95 +61,131 @@ public class ComplaintService {
             }
         }
 
-        LocalDate deadline = LocalDate.now();
-        if ("HIGH".equals(severity)) {
-            deadline = deadline.plusDays(2);
-        } else if ("MEDIUM".equals(severity)) {
-            deadline = deadline.plusDays(4);
-        } else {
-            deadline = deadline.plusDays(7);
-        }
-
-        // TYPE 1 - Check if SAME USER already has open complaint
-        List<Complaint> userExisting = complaintRepository.findByUserIdAndAreaIgnoreCaseAndIssueTypeIgnoreCase(
-            user.getId(), request.getArea(), request.getIssueType()
+        // 2. Fetch Matching Complaints (Last 24 hours) - Use normalized values
+        LocalDateTime since = LocalDateTime.now().minusHours(timeWindowHours);
+        List<Complaint> matches = complaintRepository.findByAreaIgnoreCaseAndIssueTypeIgnoreCaseAndCreatedDateAfter(
+            normalizedArea, normalizedIssue, since
         );
 
-        boolean userHasOpenComplaint = userExisting.stream()
-            .anyMatch(c -> !"Resolved".equals(c.getStatus()));
+        // 3. Unique User Counting
+        Set<Long> uniqueUserIds = matches.stream()
+                .map(Complaint::getUserId)
+                .collect(Collectors.toSet());
+        
+        // 4. Handle Repeat User
+        boolean repeatUser = uniqueUserIds.contains(user.getId());
+        uniqueUserIds.add(user.getId()); // Add current user to set for total unique count
+        int duplicateCount = uniqueUserIds.size();
 
-        if (userHasOpenComplaint) {
-            throw new RuntimeException(
-                "DUPLICATE_USER: You already have an open complaint " +
-                "for " + request.getIssueType() +
-                " in " + request.getArea() +
-                ". Please wait for it to be resolved."
-            );
-        }
+        // 5. Risk Score Integration: riskScore = (severityWeight * 20) + (duplicateCount * 10), Cap at 100
+        int riskScore = Math.min((severityWeight * 20) + (duplicateCount * 10), 100);
 
-        // TYPE 2 - Count area duplicates
-        LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
-        long areaDuplicates = complaintRepository.countAreaDuplicates(
-            request.getArea(), request.getIssueType(), threeDaysAgo
-        );
+        // Get SLA Deadline
+        SlaConfig config = slaConfigRepository.findTopByOrderByIdDesc()
+                .orElse(SlaConfig.builder()
+                        .highSeverityHours(4)
+                        .mediumSeverityHours(24)
+                        .lowSeverityHours(72)
+                        .build());
 
-        int riskScore = (severityWeight * 20) + (int)(areaDuplicates * 5);
-        if (riskScore > 100) riskScore = 100;
+        int slaHoursVal = 72;
+        if ("HIGH".equals(severity)) slaHoursVal = config.getHighSeverityHours();
+        else if ("MEDIUM".equals(severity)) slaHoursVal = config.getMediumSeverityHours();
+        else slaHoursVal = config.getLowSeverityHours();
 
+        LocalDateTime deadline = LocalDateTime.now().plusHours(slaHoursVal);
+
+        // 6. Create New Complaint
         Complaint complaint = Complaint.builder()
-                .area(request.getArea())
+                .area(request.getArea()) // Use original area from request for display
                 .phoneNumber(request.getPhoneNumber())
                 .zone(request.getZone())
                 .issueType(request.getIssueType())
-                .severity(severity)
+                .description(request.getDescription())
                 .status("Pending")
+                .severity(severity)
                 .riskScore(riskScore)
-                .duplicateCount((int) areaDuplicates)
-                .remarks("System registered.")
+                .duplicateCount(duplicateCount)
+                .repeatUser(repeatUser)
                 .createdDate(LocalDateTime.now())
                 .deadline(deadline)
                 .lastUpdatedAt(LocalDateTime.now())
                 .userId(user.getId())
+                .remarks("System registered.")
                 .build();
 
         Complaint saved = complaintRepository.save(complaint);
 
-        // Save initial activity — wrap in try-catch
+        // 7. Update All Related Complaints
+        for (Complaint c : matches) {
+            c.setDuplicateCount(duplicateCount);
+            
+            // Recalculate risk score based on their own severity
+            int cSevWeight = 1;
+            if ("HIGH".equals(c.getSeverity())) cSevWeight = 3;
+            else if ("MEDIUM".equals(c.getSeverity())) cSevWeight = 2;
+            
+            c.setRiskScore(Math.min((cSevWeight * 20) + (duplicateCount * 10), 100));
+            complaintRepository.save(c);
+        }
+
+        // Activity Log
         try {
-            String activityDesc = areaDuplicates > 0 
-                ? "System registered. " + areaDuplicates + " similar complaint(s) found in this area."
-                : "System registered.";
+            String activityDesc = duplicateCount > 1 
+                ? "Duplicate detection: " + duplicateCount + " unique citizens reporting. Risk updated."
+                : "Complaint registered.";
             activityRepository.save(ComplaintActivity.builder()
                     .complaintId(saved.getId())
                     .status("Pending")
                     .description(activityDesc)
                     .build());
         } catch (Exception e) {
-            System.out.println("Warning: Activity save failed: " + e.getMessage());
+            System.err.println("Error saving activity: " + e.getMessage());
         }
 
-        // Send admin notification — wrap in try-catch
+        // 8. Notification Logic
         try {
+            // Admin notification for new complaint
             notificationService.createNotification(
-                    "New complaint registered at " + saved.getArea() + " (ID: #" + saved.getId() + ")", 
+                    "New report in " + saved.getArea() + " (ID: #" + saved.getId() + ")", 
                     NotificationType.ADMIN_NOTICE, 
-                    null, 
+                    null, // No specific user for admin notice
                     saved.getArea());
-        } catch (Exception e) {
-            System.out.println("Warning: Admin notification failed: " + e.getMessage());
-        }
 
-        // Send high risk notification — wrap in try-catch
-        try {
+            // System alert for high risk
             if (riskScore > 75) {
                 notificationService.createNotification(
-                        "CRITICAL: High risk complaint in " + saved.getArea(), 
-                        NotificationType.SYSTEM_ALERT, 
+                        "High systemic risk detected in " + saved.getArea() + " for " + saved.getIssueType() + " (Risk: " + riskScore + ")",
+                        NotificationType.HIGH_RISK, 
+                        saved.getId(), 
                         null, 
                         saved.getArea());
             }
+
+            // Repeat Submission
+            if (repeatUser) {
+                notificationService.createNotification(
+                    "User submitted repeated complaint for " + saved.getIssueType() + " in " + saved.getArea() + " (ID: #" + saved.getId() + ")",
+                    NotificationType.REPEAT_SUBMISSION,
+                    saved.getId(),
+                    null,
+                    saved.getArea()
+                );
+            }
+
+            // Area Alert (Surge Detection)
+            if (duplicateCount >= 3) {
+                notificationService.createNotification(
+                    "Multiple complaint surge (" + duplicateCount + " reports) for " + saved.getIssueType() + " in " + saved.getArea(),
+                    NotificationType.AREA_ALERT,
+                    saved.getId(),
+                    null,
+                    saved.getArea()
+                );
+            }
         } catch (Exception e) {
-            System.out.println("Warning: Risk notification failed: " + e.getMessage());
+            // Log failure but don't crash
+            System.err.println("Error creating notification: " + e.getMessage());
         }
 
         return saved;
@@ -147,10 +200,12 @@ public class ComplaintService {
             dto.setArea(c.getArea());
             dto.setZone(c.getZone());
             dto.setIssueType(c.getIssueType());
+            dto.setDescription(c.getDescription());
             dto.setSeverity(c.getSeverity());
             dto.setStatus(c.getStatus());
             dto.setRiskScore(c.getRiskScore());
             dto.setDuplicateCount(c.getDuplicateCount());
+            dto.setRepeatUser(c.getRepeatUser());
             dto.setCreatedDate(c.getCreatedDate());
             dto.setDeadline(c.getDeadline());
             dto.setLastUpdatedAt(c.getLastUpdatedAt());
@@ -180,11 +235,11 @@ public class ComplaintService {
         return activityRepository.findByComplaintIdOrderByCreatedAtDesc(id);
     }
 
+    @Transactional
     public void updateStatus(Long id, String status, String remarks) {
         Complaint complaint = complaintRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Complaint not found"));
 
-        String oldStatus = complaint.getStatus();
         complaint.setStatus(status);
         if (remarks != null && !remarks.isEmpty()) {
             complaint.setRemarks(remarks);
@@ -208,7 +263,7 @@ public class ComplaintService {
             System.out.println("Warning: Activity log failed: " + e.getMessage());
         }
 
-        // Send notification ONLY if userId exists — never crash if null
+        // Send notification ONLY if userId exists
         if (complaint.getUserId() != null) {
             try {
                 NotificationType notifType = NotificationType.STATUS_UPDATE;
@@ -224,47 +279,62 @@ public class ComplaintService {
 
                 notificationService.createNotification(message, notifType, complaint.getUserId(), complaint.getArea());
             } catch (Exception e) {
-                System.out.println("Warning: Notification failed for complaint #" + id + " - " + e.getMessage());
+                System.out.println("Warning: Notification failed: " + e.getMessage());
             }
-        } else {
-            System.out.println("Warning: complaint #" + id + " has no userId - skipping notification");
         }
     }
 
     @Scheduled(fixedRate = 3600000)
     @Transactional
     public void checkEscalation() {
-        LocalDateTime threshold = LocalDateTime.now().minusDays(2);
-        List<Complaint> overdue = complaintRepository.findByCreatedDateBeforeAndStatusNot(
-                threshold, "Resolved");
+        List<Complaint> active = complaintRepository.findAll().stream()
+                .filter(c -> !"Resolved".equals(c.getStatus()) && !"Escalated".equals(c.getStatus()))
+                .collect(Collectors.toList());
 
-        for (Complaint c : overdue) {
-            if (!"Escalated".equals(c.getStatus()) && !"Resolved".equals(c.getStatus())) {
-                c.setStatus("Escalated");
-                c.setRemarks("Auto-escalated by system due to SLA breach.");
-                c.setLastUpdatedAt(LocalDateTime.now());
-                complaintRepository.save(c);
+        LocalDateTime now = LocalDateTime.now();
+        for (Complaint c : active) {
+            if (c.getDeadline() != null) {
+                if (now.isAfter(c.getDeadline())) {
+                    c.setStatus("Escalated");
+                    c.setRemarks("Auto-escalated by system due to SLA breach.");
+                    c.setLastUpdatedAt(now);
+                    complaintRepository.save(c);
 
-                try {
-                    activityRepository.save(ComplaintActivity.builder()
-                            .complaintId(c.getId())
-                            .status("Escalated")
-                            .description("Auto-escalated by system: SLA breach/SLA Overdue.")
-                            .build());
-                } catch (Exception e) {
-                    System.out.println("Warning: Auto-escalation activity log failed: " + e.getMessage());
-                }
+                    try {
+                        activityRepository.save(ComplaintActivity.builder()
+                                .complaintId(c.getId())
+                                .status("Escalated")
+                                .description("Auto-escalated by system: SLA breach/SLA Overdue.")
+                                .build());
+                    } catch (Exception e) {}
 
-                if (c.getUserId() != null) {
                     try {
                         notificationService.createNotification(
-                                "Auto-Escalation: Complaint #" + c.getId() + " in " + c.getArea() + " is overdue.", 
-                                NotificationType.ESCALATED, 
-                                c.getUserId(), 
+                                "Complaint #" + c.getId() + " has exceeded SLA deadline in " + c.getArea(),
+                                NotificationType.SLA_BREACH,
+                                c.getId(),
+                                null,
                                 c.getArea());
-                    } catch (Exception e) {
-                        System.out.println("Warning: Auto-escalation notification failed: " + e.getMessage());
+                    } catch (Exception e) {}
+
+                    if (c.getUserId() != null) {
+                        try {
+                            notificationService.createNotification(
+                                    "Auto-Escalation: Complaint #" + c.getId() + " in " + c.getArea() + " is overdue.",
+                                    NotificationType.ESCALATED,
+                                    c.getUserId(),
+                                    c.getArea());
+                        } catch (Exception e) {}
                     }
+                } else if (now.plusHours(2).isAfter(c.getDeadline())) {
+                    try {
+                        notificationService.createNotification(
+                                "Complaint #" + c.getId() + " approaches SLA deadline within 2 hours in " + c.getArea(),
+                                NotificationType.SLA_WARNING,
+                                c.getId(),
+                                null,
+                                c.getArea());
+                    } catch (Exception e) {}
                 }
             }
         }
@@ -284,13 +354,47 @@ public class ComplaintService {
                 .collect(Collectors.toList());
     }
 
+    public Map<String, Long> getStatusSummary() {
+        return complaintRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        c -> {
+                            String s = c.getStatus();
+                            if ("Pending".equals(s) || "Escalated".equals(s)) return "Open";
+                            return s;
+                        },
+                        Collectors.counting()
+                ));
+    }
+
+    public List<TrendDTO> getComplaintsTrendLast7Days() {
+        LocalDate today = LocalDate.now();
+        LocalDate sevenDaysAgo = today.minusDays(6);
+        LocalDateTime since = sevenDaysAgo.atStartOfDay();
+
+        List<Complaint> recentComplaints = complaintRepository.findByCreatedDateAfter(since);
+
+        Map<LocalDate, Long> countsByDate = recentComplaints.stream()
+                .collect(Collectors.groupingBy(
+                        c -> c.getCreatedDate().toLocalDate(),
+                        Collectors.counting()
+                ));
+
+        List<TrendDTO> trends = new ArrayList<>();
+        for (int i = 6; i >= 0; i--) {
+            LocalDate date = today.minusDays(i);
+            long count = countsByDate.getOrDefault(date, 0L);
+            trends.add(new TrendDTO(date.toString(), count));
+        }
+
+        return trends;
+    }
+
     public StatsDTO getStats() {
         long highSeverityCount = complaintRepository.countBySeverity("HIGH");
         long pendingCount = complaintRepository.findByStatus("Pending").size();
         long inProgressCount = complaintRepository.findByStatus("In Progress").size();
         long resolvedCount = complaintRepository.findByStatus("Resolved").size();
         long escalatedCount = complaintRepository.findByStatus("Escalated").size();
-
         long total = complaintRepository.count();
 
         return StatsDTO.builder()
@@ -313,10 +417,9 @@ public class ComplaintService {
         long resolved = userComplaints.stream().filter(c -> c.getStatus().equals("Resolved")).count();
         long escalated = userComplaints.stream().filter(c -> c.getStatus().equals("Escalated")).count();
 
-        // Calculate overdue for user
         long overdue = userComplaints.stream()
                 .filter(c -> !"Resolved".equals(c.getStatus()) && c.getDeadline() != null
-                        && c.getDeadline().isBefore(LocalDate.now()))
+                        && c.getDeadline().isBefore(LocalDateTime.now()))
                 .count();
 
         return java.util.Map.of(

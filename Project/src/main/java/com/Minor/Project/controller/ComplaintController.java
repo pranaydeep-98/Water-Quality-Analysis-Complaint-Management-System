@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +44,7 @@ public class ComplaintController {
     }
 
     @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id, 
             @RequestBody Map<String, String> request) {
@@ -52,12 +54,12 @@ public class ComplaintController {
             complaintService.updateStatus(id, status, remarks);
             return ResponseEntity.ok(Map.of("message", "Complaint #" + id + " updated to " + status));
         } catch (Exception e) {
-            return ResponseEntity.status(500)
-                .body(Map.of("message", "Status adjustment failed: " + e.getMessage()));
+            return ResponseEntity.status(500).body("Error updating status: " + e.getMessage());
         }
     }
 
     @PutMapping("/{id}/admin-update")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> adminUpdate(@PathVariable Long id, @RequestBody Map<String, String> updates) {
         System.out.println("DEBUG: Admin update request for ID: " + id + " with map: " + updates);
         try {

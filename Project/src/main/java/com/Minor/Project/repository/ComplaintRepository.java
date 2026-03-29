@@ -31,6 +31,11 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
         Long userId, String area, String issueType
     );
 
+    // For duplicate handling candidates
+    List<Complaint> findByAreaIgnoreCaseAndIssueTypeIgnoreCaseAndCreatedDateAfter(
+        String area, String issueType, LocalDateTime since
+    );
+
     // For area duplicate count
     @Query("SELECT COUNT(c) FROM Complaint c WHERE " +
            "LOWER(c.area) = LOWER(:area) AND " +
@@ -42,4 +47,6 @@ public interface ComplaintRepository extends JpaRepository<Complaint, Long> {
         @org.springframework.data.repository.query.Param("issueType") String issueType,
         @org.springframework.data.repository.query.Param("since") LocalDateTime since
     );
+    // For group scanning
+    List<Complaint> findByCreatedDateAfter(LocalDateTime since);
 }

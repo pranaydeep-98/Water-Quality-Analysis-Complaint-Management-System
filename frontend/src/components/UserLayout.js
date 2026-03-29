@@ -16,22 +16,9 @@ import './UserLayout.css';
 const UserLayout = () => {
   const { user = null, logout = () => {} } = useAuth() || {};
   const navigate = useNavigate();
-  const [unreadCount, setUnreadCount] = useState(0);
 
-  const fetchUnreadCount = async () => {
-    try {
-      const res = await api.get('/notifications/unread-count');
-      setUnreadCount(res.data.count || 0);
-    } catch (err) {
-      console.error("Failed to fetch unread count");
-    }
-  };
 
-  useEffect(() => {
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 20000); // 20s refresh for bell
-    return () => clearInterval(interval);
-  }, []);
+
 
   return (
     <div className="user-app-container">
@@ -55,13 +42,7 @@ const UserLayout = () => {
               <List size={18} />
               <span>Operational logs</span>
             </NavLink>
-            <NavLink to="/user/notifications" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>
-              <div className="nav-icon-wrapper">
-                 <Bell size={18} />
-                 {unreadCount > 0 && <span className="bell-badge">{unreadCount}</span>}
-              </div>
-              <span>Alerts</span>
-            </NavLink>
+
           </nav>
 
           <div className="navbar-actions">
